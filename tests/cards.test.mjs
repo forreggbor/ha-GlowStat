@@ -279,3 +279,41 @@ test('the card name is escaped', () => {
   assert.equal(el.shadowRoot.querySelector('img'), null);
   assert.match(text(el, '.name'), /<img src=x/);
 });
+
+test('a zone whose fail-safe has tripped is shown as a warning', () => {
+  const win = boot();
+  const stale = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_stale', relay_fault: [], hvac_action: 'heating' }) });
+  const el = mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, stale.hass);
+  assert.equal(text(el, '.status'), '⚠ Sensor silent – heating off');
+  assert.match(el.shadowRoot.querySelector('ha-card').getAttribute('style'), /239,83,80/);
+  assert.ok(!el.shadowRoot.querySelector('ha-card').classList.contains('live'), 'no pulsing while faulted');
+
+  const lost = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_unavailable' }) });
+  assert.equal(text(mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, lost.hass), '.status'), '⚠ Sensor lost – heating off');
+
+  const relay = mkHass({ 'climate.h': climateState({ sensor_fault: null, relay_fault: ['switch.r'] }) });
+  assert.equal(text(mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, relay.hass), '.status'), '⚠ Relay not responding');
+});
+
+test('an unknown fault text falls back to a generic one, and the card language applies', () => {
+  const win = boot();
+  const odd = mkHass({ 'climate.h': climateState({ sensor_fault: 'something_new' }) });
+  assert.equal(text(mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, odd.hass), '.status'), '⚠ Sensor fault');
+  const hu = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_stale' }) });
+  assert.equal(text(mount(win, 'glowstat-climate-card', { entity: 'climate.h', language: 'hu' }, hu.hass), '.status'), '⚠ Érzékelő néma – fűtés ki');
+});
+
+test('a healthy zone shows its normal status and the card updates when the fault appears and goes away', () => {
+  const win = boot();
+  const m = mkHass({ 'climate.h': climateState({ sensor_fault: null, relay_fault: [], hvac_action: 'idle' }) });
+  const el = mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, m.hass);
+  assert.equal(text(el, '.status'), 'Idle');
+
+  m.hass.states = { 'climate.h': climateState({ sensor_fault: 'sensor_stale', hvac_action: 'idle' }) };
+  el.hass = m.hass;
+  assert.equal(text(el, '.status'), '⚠ Sensor silent – heating off');
+
+  m.hass.states = { 'climate.h': climateState({ sensor_fault: null, hvac_action: 'idle' }) };
+  el.hass = m.hass;
+  assert.equal(text(el, '.status'), 'Idle');
+});

@@ -47,6 +47,8 @@ One card for heating and air conditioners: target temperature with `+` / `-`, th
 state (heating, cooling, idle, off) and control buttons. The glow follows what the device is doing and pulses
 while it is actually heating, cooling or drying.
 
+For zones of [SmartHeatZones](https://github.com/forreggbor/SmartHeatZones) (version 1.10.1 or newer) the card also shows the fail-safe state of the zone: when the zone has switched its heating off because its temperature sensor was lost or went silent (attribute `sensor_fault`), or when a relay does not respond (attribute `relay_fault`), the status line shows a warning in the card language, the glow turns red and the pulsing stops. Climate entities of other integrations are not affected.
+
 The control buttons are read from the entity itself, nothing is hard-coded. In the editor you pick them one by one
 from every mode the entity offers: operating modes, presets, fan modes and swing modes, and you can reorder them.
 

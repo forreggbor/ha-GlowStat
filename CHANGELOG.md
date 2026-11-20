@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-20
+
+| Category | Description |
+|----------|-------------|
+| Added    | The climate card shows when a SmartHeatZones zone has switched its heating off for safety |
+
+### Added
+
+- For zones of SmartHeatZones (version 1.10.1 or newer) the climate card now shows the safety state of the zone. When the zone has switched its heating off because its temperature sensor was lost or went silent, or when a relay does not respond, the status line shows a short warning in the card language, the glow turns red and the pulsing stops. Before, such a zone looked like a zone that was simply idle. Climate entities of other integrations are not affected (closes #1).
+
 ## [0.3.0] - 2026-11-20
 
 | Category | Description |

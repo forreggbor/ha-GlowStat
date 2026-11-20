@@ -1,6 +1,6 @@
-/* GlowStat v0.3.0 - MIT - https://github.com/forreggbor/ha-GlowStat */
+/* GlowStat v0.4.0 - MIT - https://github.com/forreggbor/ha-GlowStat */
 (() => {
-const GS_VERSION = '0.3.0';
+const GS_VERSION = '0.4.0';
 /**
  * Shared helpers for all GlowStat cards: temperature color scale,
  * translations, escaping and small DOM utilities.
@@ -774,6 +774,8 @@ Object.assign(GS_I18N.en, {
   ms_off: 'off', ms_auto: 'automatic', ms_heat_cool: 'switch', ms_heat: 'warm', ms_cool: 'cold', ms_dry: 'dehumidify', ms_fan_only: 'fan',
   ps_auto: 'schedule', ps_manual: 'manual', preset_temperatures: 'Preset temperatures',
   temp_down: 'Lower the target temperature', temp_up: 'Raise the target temperature',
+  f_sensor_unavailable: 'Sensor lost – heating off', f_sensor_stale: 'Sensor silent – heating off',
+  f_sensor: 'Sensor fault', f_relay: 'Relay not responding',
 });
 Object.assign(GS_I18N.hu, {
   c_heating: 'Fűt', c_cooling: 'Hűt', c_drying: 'Szárít', c_fan: 'Ventilál',
@@ -787,12 +789,16 @@ Object.assign(GS_I18N.hu, {
   ms_off: 'kikapcs.', ms_auto: 'automata', ms_heat_cool: 'váltó', ms_heat: 'meleg', ms_cool: 'hideg', ms_dry: 'párátlan', ms_fan_only: 'ventilátor',
   ps_auto: 'program', ps_manual: 'kézi', preset_temperatures: 'Előbeállítás hőfokok',
   temp_down: 'Alacsonyabb célhőmérséklet', temp_up: 'Magasabb célhőmérséklet',
+  f_sensor_unavailable: 'Érzékelő kiesett – fűtés ki', f_sensor_stale: 'Érzékelő néma – fűtés ki',
+  f_sensor: 'Érzékelő hiba', f_relay: 'A relé nem válaszol',
 });
 
 const GS_MODE_RGB = {
   cool: '66,165,245', heat: '255,112,67', dry: '38,166,154',
   auto: '102,187,106', heat_cool: '102,187,106', fan_only: '144,164,174',
 };
+/** Color of a zone whose fail-safe has tripped (sensor lost or silent, relay not responding). */
+const GS_FAULT_RGB = '239,83,80';
 const GS_ACTION_MODE = { heating: 'heat', preheating: 'heat', cooling: 'cool', drying: 'dry', fan: 'fan_only' };
 const GS_MODE_ICON = {
   off: 'mdi:power', auto: 'mdi:thermostat-auto', heat_cool: 'mdi:sun-snowflake-variant',
@@ -971,7 +977,7 @@ class GlowStatClimateCard extends HTMLElement {
     if (!st) return '∅|' + gsLangObj(this._hass, this._config).language;
     const a = st.attributes;
     return [st.state, a.hvac_action, a.preset_mode, a.temperature, a.current_temperature, a.min_temp, a.max_temp,
-      this._pending, gsLangObj(this._hass, this._config).language, JSON.stringify(this._config.preset_temperatures || {})].join('|');
+      a.sensor_fault, JSON.stringify(a.relay_fault || []), this._pending, gsLangObj(this._hass, this._config).language, JSON.stringify(this._config.preset_temperatures || {})].join('|');
   }
 
   _stepOf(a) {
@@ -986,6 +992,22 @@ class GlowStatClimateCard extends HTMLElement {
       return GS_ACTION_MODE[a.hvac_action] || null;
     }
     return st.state !== 'off' && GS_MODE_RGB[st.state] ? st.state : null;
+  }
+
+  /**
+   * Fail-safe state reported by SmartHeatZones in the attributes `sensor_fault` (text) and
+   * `relay_fault` (list). Returns the warning text in the card language, or null when all is fine.
+   */
+  _fault(st) {
+    const L = gsLangObj(this._hass, this._config);
+    const a = st.attributes;
+    if (a.sensor_fault) {
+      const key = 'f_' + a.sensor_fault;
+      const text = gsT(L, key);
+      return text === key ? gsT(L, 'f_sensor') : text;
+    }
+    if (Array.isArray(a.relay_fault) && a.relay_fault.length) return gsT(L, 'f_relay');
+    return null;
   }
 
   _statusText(st) {
@@ -1048,7 +1070,8 @@ class GlowStatClimateCard extends HTMLElement {
     }
     const a = st.attributes;
     const mode = this._colorMode(st);
-    const rgb = mode ? GS_MODE_RGB[mode] : null;
+    const fault = this._fault(st);
+    const rgb = fault ? GS_FAULT_RGB : (mode ? GS_MODE_RGB[mode] : null);
     const col = rgb ? `rgb(${rgb})` : 'var(--secondary-text-color)';
     const valCol = rgb ? `rgb(${rgb})` : 'var(--primary-text-color)';
     const name = cfg.name || a.friendly_name || cfg.entity;
@@ -1065,7 +1088,7 @@ class GlowStatClimateCard extends HTMLElement {
     const curTxt = a.current_temperature === undefined || a.current_temperature === null
       ? '' : `<div class="cur more" role="button" tabindex="0" aria-label="${gsEsc(name)}" style="color:${valCol}"><ha-icon icon="mdi:thermometer"></ha-icon>${gsNum(L, Number(a.current_temperature), 1)} ${gsEsc(unit)}</div>`;
 
-    const live = Boolean(rgb) && a.hvac_action !== undefined && a.hvac_action !== null && Boolean(GS_ACTION_MODE[a.hvac_action]);
+    const live = Boolean(rgb) && !fault && a.hvac_action !== undefined && a.hvac_action !== null && Boolean(GS_ACTION_MODE[a.hvac_action]);
     const btns = this._buttons(st);
     const btnHtml = btns.length
       ? `<div class="btns">${btns.map((b) => `
@@ -1082,8 +1105,8 @@ class GlowStatClimateCard extends HTMLElement {
       <style>${GS_CLIMATE_CSS}</style>
       <ha-card class="${live ? 'live' : ''}" style="--g:${rgb || '0,0,0'};background:${bg};border:${border}">
         <div class="card">
-          <div class="head more" role="button" tabindex="0" aria-label="${gsEsc(name)}"><ha-icon icon="${gsEsc(icon)}" style="color:${col}"></ha-icon>
-            <div><div class="name">${gsEsc(name)}</div><div class="status" style="color:${col}">${gsEsc(this._statusText(st))}</div></div></div>
+          <div class="head more" role="button" tabindex="0" aria-label="${gsEsc(fault ? name + ': ' + fault : name)}"><ha-icon icon="${gsEsc(icon)}" style="color:${col}"></ha-icon>
+            <div><div class="name">${gsEsc(name)}</div><div class="status" style="color:${col}">${gsEsc(fault ? '⚠ ' + fault : this._statusText(st))}</div></div></div>
           ${curTxt}
           <div class="rb minus${dis}" style="${rbStyle}" role="button" tabindex="0" aria-label="${gsEsc(gsT(L, 'temp_down'))}" data-kind="step" data-value="-1"><ha-icon icon="mdi:minus"></ha-icon></div>
           <div class="temp more" role="button" tabindex="0" aria-label="${gsEsc(name)}" style="color:${valCol}">${targetTxt} ${gsEsc(unit)}</div>
