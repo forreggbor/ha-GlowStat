@@ -301,7 +301,7 @@ class GlowStatThermometerCard extends HTMLElement {
     if (!isNaN(b)) {
       const icon = b >= 95 ? 'mdi:battery' : 'mdi:battery-' + Math.max(10, Math.round(b / 10) * 10);
       const col = b < 20 ? '#ef5350' : b < 40 ? '#ffa726' : 'var(--secondary-text-color)';
-      batHtml = `<div class="bat" style="color:${col}"><ha-icon icon="${icon}"></ha-icon>${Math.round(b)} %</div>`;
+      batHtml = `<div class="bat" data-entity="${gsEsc(cfg.battery_entity)}" style="color:${col}"><ha-icon icon="${icon}"></ha-icon>${Math.round(b)} %</div>`;
     }
 
     // Humidity
@@ -310,7 +310,7 @@ class GlowStatThermometerCard extends HTMLElement {
     const h = hst ? parseFloat(hst.state) : NaN;
     if (!isNaN(h)) {
       const col = h >= 40 && h <= 60 ? '#42a5f5' : '#ffa726';
-      humHtml = `<div class="hum" style="color:${col}"><ha-icon icon="mdi:water-percent"></ha-icon>${Math.round(h)} %</div>`;
+      humHtml = `<div class="hum" data-entity="${gsEsc(cfg.humidity_entity)}" style="color:${col}"><ha-icon icon="mdi:water-percent"></ha-icon>${Math.round(h)} %</div>`;
     }
 
     // Scale bar (dynamic range around the value)
@@ -361,7 +361,11 @@ class GlowStatThermometerCard extends HTMLElement {
       </ha-card>`);
 
     const card = this.shadowRoot.querySelector('ha-card');
-    card.addEventListener('click', () => gsFire(this, 'hass-more-info', { entityId: cfg.entity }));
+    // The more-info dialog opens for the element that was clicked: battery, humidity or (default) temperature.
+    card.addEventListener('click', (ev) => {
+      const el = ev.composedPath().find((n) => n.dataset && n.dataset.entity);
+      gsFire(this, 'hass-more-info', { entityId: el ? el.dataset.entity : cfg.entity });
+    });
   }
 }
 
