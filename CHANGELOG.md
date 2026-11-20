@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-20
+
+| Category | Description |
+|----------|-------------|
+| Added    | Trend arrow on the thermometer card showing the change over the last hour |
+| Added    | The climate card glows and pulses while the device is heating, cooling or drying |
+| Added    | History graph for up to 30 days, drawn from the long-term statistics |
+| Added    | Adjustable comfort range for the colors and words of the thermometer card |
+| Added    | Mold warning for high humidity and an optional dew point |
+| Added    | Preset temperatures can be taken from the climate entity |
+| Added    | Cards can be used with the keyboard and a screen reader, and adapt to narrow screens |
+| Added    | Automatic tests and automatic releases |
+
+### Added
+
+- The thermometer card shows an arrow with the change of the last hour under the temperature: up, down, or flat when the change is small. It can be switched off.
+- While a heating or an air conditioner is actually working, the glow of the climate card pulses softly. It stays still when the device is idle or off, and for people who prefer less motion.
+- The history graph can cover up to 30 days. Longer periods are read from the long-term statistics of Home Assistant, so a week or a month loads quickly. If no statistics exist, the recorded history is used instead.
+- The green comfort range of the thermometer card can be set, and the colors and the words (comfortable, cool, warm, ...) follow it.
+- Humidity above a limit (70% by default, adjustable) turns red and shows a mold warning. The dew point can be shown instead on request.
+- The temperatures under the preset buttons of the climate card are read from the entity when it provides them. A value set in the card still wins.
+- Every button of both cards works with the keyboard and has a label for screen readers. On narrow screens the cards switch to a more compact layout.
+- The project is now tested automatically on every change, and a new release is published automatically when a version tag is pushed.
+
 ## [0.2.1] - 2026-11-20
 
 | Category | Description |

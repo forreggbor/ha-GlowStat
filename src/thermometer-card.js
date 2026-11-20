@@ -1,6 +1,6 @@
 /**
  * glowstat-thermometer-card: temperature card with state-colored glow,
- * humidity, battery, scale bar, 24 h sparkline and an animated background emoji.
+ * humidity, battery, scale bar, history sparkline, trend arrow and an animated background emoji.
  */
 
 /** History cache shared by all card instances, keyed by entity + hours. */
@@ -9,10 +9,13 @@ const GS_LS_PREFIX = 'glowstat:hist:';
 const GS_LS_MAX_AGE_MS = 6 * 3600 * 1000;
 const GS_REFRESH_MS = 5 * 60 * 1000;
 const GS_BUSY_TIMEOUT_MS = 30 * 1000;
+/** Histories longer than this many hours come from the long-term statistics instead of the raw history. */
+const GS_STATS_FROM_HOURS = 48;
 
 const GS_THERMO_CSS = `
   :host { display: block; }
-  ha-card { display: block; height: 100%; overflow: hidden; position: relative; cursor: pointer; }
+  ha-card { display: block; height: 100%; overflow: hidden; position: relative; cursor: pointer; container-type: inline-size; }
+  [tabindex]:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 6px; }
   .card {
     position: relative; box-sizing: border-box; height: 100%; min-height: 176px; padding: 10px;
     display: grid; gap: 8px; align-items: center; align-content: space-between;
@@ -29,9 +32,12 @@ const GS_THERMO_CSS = `
   .name { font-weight: 600; font-size: 14px; }
   .word { font-size: 12px; }
   .bat { grid-area: bat; justify-self: end; align-self: start; display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 500; }
-  .temp { grid-area: temp; justify-self: start; font-size: 22px; font-weight: 400; line-height: 1; }
+  .temp { grid-area: temp; justify-self: start; font-size: 22px; font-weight: 400; line-height: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
   .temp small { font-size: 18px; }
-  .hum { grid-area: hum; justify-self: end; display: flex; align-items: center; gap: 2px; font-size: 22px; font-weight: 400; }
+  .trend { font-size: 11px; font-weight: 500; line-height: 1; }
+  .hum { grid-area: hum; justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-weight: 400; }
+  .hum .hv { display: flex; align-items: center; gap: 2px; font-size: 22px; line-height: 1; }
+  .hum .hsub { font-size: 10px; font-weight: 500; line-height: 1; }
   ha-icon { --mdc-icon-size: 18px; }
   .hum ha-icon { --mdc-icon-size: 22px; }
   .spark { grid-area: spark; width: 100%; min-width: 0; justify-self: stretch; }
@@ -53,6 +59,12 @@ const GS_THERMO_CSS = `
   @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
   @keyframes pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.1) } }
   @media (prefers-reduced-motion: reduce) { .bgicon > div { animation: none !important; } }
+  @container (max-width: 300px) {
+    .card { min-height: 150px; padding: 8px; gap: 6px; }
+    .temp, .hum .hv { font-size: 18px; }
+    .temp small { font-size: 14px; }
+    .spark .legend span:nth-child(2) { display: none; }
+  }
 `;
 
 class GlowStatThermometerCard extends HTMLElement {
@@ -62,6 +74,7 @@ class GlowStatThermometerCard extends HTMLElement {
     this._uid = 'gs' + Math.random().toString(36).slice(2, 8);
     this._sig = '';
     this._histKey = null;
+    this._trendKey = null;
   }
 
   static getConfigElement() {
@@ -83,6 +96,7 @@ class GlowStatThermometerCard extends HTMLElement {
     this._config = {
       show_sparkline: true,
       show_background_emoji: true,
+      show_trend: true,
       history_hours: 24,
       ...config,
     };
@@ -130,24 +144,44 @@ class GlowStatThermometerCard extends HTMLElement {
   }
 
   _unsubscribeHistory() {
-    if (this._histKey && GS_HIST[this._histKey]) {
-      GS_HIST[this._histKey].subs.delete(this);
-    }
+    [this._histKey, this._trendKey].forEach((k) => {
+      if (k && GS_HIST[k]) GS_HIST[k].subs.delete(this);
+    });
     this._histKey = null;
+    this._trendKey = null;
   }
 
-  /** Load the history for the sparkline if missing or stale; shared across cards. */
+  /** Load the history needed for the graph and the trend arrow; the caches are shared across cards. */
   _ensureHistory() {
     const c = this._config;
     const hass = this._hass;
-    if (!c || !hass || !c.show_sparkline) return;
-
+    if (!c || !hass) return;
     const hours = Math.max(1, Number(c.history_hours) || 24);
-    const key = c.entity + '@' + hours;
-    if (this._histKey !== key) {
-      this._unsubscribeHistory();
-      this._histKey = key;
+    const raw = hours <= GS_STATS_FROM_HOURS;
+    const specs = [];
+    let histKey = null;
+    let trendKey = null;
+    if (c.show_sparkline) {
+      histKey = c.entity + '@' + hours;
+      specs.push({ key: histKey, hours, stats: !raw });
     }
+    if (c.show_trend !== false && (!c.show_sparkline || !raw)) {
+      trendKey = c.entity + '@trend';
+      specs.push({ key: trendKey, hours: 3, stats: false });
+    }
+    if (this._histKey !== histKey || this._trendKey !== trendKey) {
+      this._unsubscribeHistory();
+      this._histKey = histKey;
+      this._trendKey = trendKey;
+    }
+    specs.forEach((spec) => this._loadHistory(spec));
+  }
+
+  /** Load one history cache if it is missing or stale (statistics for long periods, raw history otherwise). */
+  _loadHistory(spec) {
+    const c = this._config;
+    const hass = this._hass;
+    const { key, hours } = spec;
     const cache = (GS_HIST[key] = GS_HIST[key] || { subs: new Set(), init: false });
     cache.subs.add(this);
 
@@ -178,10 +212,7 @@ class GlowStatThermometerCard extends HTMLElement {
     cache.busyAt = Date.now();
     const end = new Date();
     const start = new Date(end.getTime() - hours * 3600 * 1000);
-    const path = 'history/period/' + start.toISOString()
-      + '?filter_entity_id=' + encodeURIComponent(c.entity)
-      + '&end_time=' + encodeURIComponent(end.toISOString())
-      + '&minimal_response&no_attributes&significant_changes_only=0';
+    const toSec = (v) => (typeof v === 'number' ? (v > 1e12 ? v / 1000 : v) : Date.parse(v) / 1000);
 
     const finish = () => {
       cache.busy = false;
@@ -195,12 +226,33 @@ class GlowStatThermometerCard extends HTMLElement {
       });
     };
 
+    const viaHistory = () => hass.callApi('GET', 'history/period/' + start.toISOString()
+      + '?filter_entity_id=' + encodeURIComponent(c.entity)
+      + '&end_time=' + encodeURIComponent(end.toISOString())
+      + '&minimal_response&no_attributes&significant_changes_only=0').then((r) => ((r && r[0]) || [])
+      .map((p) => [Date.parse(p.last_changed || p.last_updated) / 1000, parseFloat(p.state)])
+      .filter((p) => !isNaN(p[0]) && !isNaN(p[1])));
+
+    const viaStatistics = () => hass.callWS({
+      type: 'recorder/statistics_during_period',
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      statistic_ids: [c.entity],
+      period: hours <= 720 ? 'hour' : 'day',
+      types: ['mean'],
+    }).then((r) => ((r && r[c.entity]) || [])
+      .map((p) => [toSec(p.start), Number(p.mean)])
+      .filter((p) => !isNaN(p[0]) && !isNaN(p[1]))).catch((e) => {
+      console.error('GlowStat: statistics request failed for ' + c.entity + ', using the history instead', e);
+      return [];
+    });
+
     try {
-      hass.callApi('GET', path).then((r) => {
-        const rows = (r && r[0]) || [];
-        cache.pts = rows
-          .map((p) => [Date.parse(p.last_changed || p.last_updated) / 1000, parseFloat(p.state)])
-          .filter((p) => !isNaN(p[0]) && !isNaN(p[1]));
+      const request = spec.stats && typeof hass.callWS === 'function'
+        ? viaStatistics().then((pts) => (pts.length >= 2 ? pts : viaHistory()))
+        : viaHistory();
+      request.then((pts) => {
+        cache.pts = pts;
         cache.start = start.getTime() / 1000;
         cache.end = end.getTime() / 1000;
         cache.err = null;
@@ -221,6 +273,27 @@ class GlowStatThermometerCard extends HTMLElement {
       cache.busy = false;
       cache.t = Date.now() - GS_REFRESH_MS + 60000; // retry in about a minute
     }
+  }
+
+  /**
+   * Change of the value over the last hour from the cached raw history.
+   * @param {number} nowVal Current value.
+   * @returns {number|null} The change, or null when there is not enough history.
+   */
+  _trend(nowVal) {
+    const cache = this._trendKey ? GS_HIST[this._trendKey] : GS_HIST[this._histKey];
+    const pts = cache && cache.pts;
+    if (!pts || !pts.length) return null;
+    const ref = cache.end - 3600;
+    let before = null;
+    for (const p of pts) {
+      if (p[0] <= ref) before = p; else break;
+    }
+    if (!before) {
+      if (pts[0][0] - ref > 1800) return null;
+      before = pts[0];
+    }
+    return nowVal - before[1];
   }
 
   /** Build the sparkline markup from the cached history. */
@@ -284,14 +357,17 @@ class GlowStatThermometerCard extends HTMLElement {
     const celsius = ok ? (isF ? (raw - 32) * 5 / 9 : raw) : NaN;
     const toDisp = (cv) => Math.round(isF ? cv * 9 / 5 + 32 : cv);
 
-    const rgb = gsColor(celsius);
+    const stops = gsStops(cfg.comfort_min, cfg.comfort_max);
+    const cmin = stops[2][0];
+    const cmax = stops[3][0];
+    const rgb = gsColor(celsius, stops);
     const c = rgb.join(',');
     const name = cfg.name || (st && st.attributes.friendly_name) || cfg.entity;
 
     let word = 'no_data';
     if (ok) {
-      word = celsius >= 30 ? 'hot' : celsius >= 26 ? 'warm' : celsius >= 23 ? 'pleasant'
-        : celsius >= 20 ? 'comfortable' : celsius >= 16 ? 'cool' : celsius >= 0 ? 'cold' : 'freezing';
+      word = celsius >= cmax + 8 ? 'hot' : celsius >= cmax + 4 ? 'warm' : celsius > cmax ? 'pleasant'
+        : celsius >= cmin ? 'comfortable' : celsius >= cmin - 4 ? 'cool' : celsius >= 0 ? 'cold' : 'freezing';
     }
 
     // Battery
@@ -301,7 +377,7 @@ class GlowStatThermometerCard extends HTMLElement {
     if (!isNaN(b)) {
       const icon = b >= 95 ? 'mdi:battery' : 'mdi:battery-' + Math.max(10, Math.round(b / 10) * 10);
       const col = b < 20 ? '#ef5350' : b < 40 ? '#ffa726' : 'var(--secondary-text-color)';
-      batHtml = `<div class="bat" data-entity="${gsEsc(cfg.battery_entity)}" style="color:${col}"><ha-icon icon="${icon}"></ha-icon>${Math.round(b)} %</div>`;
+      batHtml = `<div class="bat" data-entity="${gsEsc(cfg.battery_entity)}" tabindex="0" role="button" aria-label="${gsEsc(bst.attributes.friendly_name || cfg.battery_entity)}" style="color:${col}"><ha-icon icon="${icon}"></ha-icon>${Math.round(b)} %</div>`;
     }
 
     // Humidity
@@ -309,8 +385,32 @@ class GlowStatThermometerCard extends HTMLElement {
     const hst = cfg.humidity_entity && hass.states[cfg.humidity_entity];
     const h = hst ? parseFloat(hst.state) : NaN;
     if (!isNaN(h)) {
-      const col = h >= 40 && h <= 60 ? '#42a5f5' : '#ffa726';
-      humHtml = `<div class="hum" data-entity="${gsEsc(cfg.humidity_entity)}" style="color:${col}"><ha-icon icon="mdi:water-percent"></ha-icon>${Math.round(h)} %</div>`;
+      const moldAt = cfg.mold_humidity === undefined || cfg.mold_humidity === null || cfg.mold_humidity === '' ? 70 : Number(cfg.mold_humidity);
+      const mold = moldAt > 0 && h >= moldAt;
+      const col = mold ? '#ef5350' : h >= 40 && h <= 60 ? '#42a5f5' : '#ffa726';
+      let sub = '';
+      if (mold) {
+        sub = gsT(L, 'mold_risk');
+      } else if (cfg.show_dew_point && ok && h > 0) {
+        const g = Math.log(h / 100) + (17.62 * celsius) / (243.12 + celsius);
+        const dew = 243.12 * g / (17.62 - g);
+        sub = gsT(L, 'dew_point') + ' ' + gsNum(L, isF ? dew * 9 / 5 + 32 : dew, 1) + '°';
+      }
+      humHtml = `<div class="hum" data-entity="${gsEsc(cfg.humidity_entity)}" tabindex="0" role="button" aria-label="${gsEsc(hst.attributes.friendly_name || cfg.humidity_entity)}" style="color:${col}"><div class="hv"><ha-icon icon="mdi:water-percent"></ha-icon>${Math.round(h)} %</div>${sub ? `<div class="hsub">${gsEsc(sub)}</div>` : ''}</div>`;
+    }
+
+    // Trend arrow: change over the last hour
+    let trendHtml = '';
+    if (cfg.show_trend !== false && ok) {
+      const d = this._trend(raw);
+      if (d !== null) {
+        const thr = isF ? 0.5 : 0.3;
+        const dir = d >= thr ? 'up' : d <= -thr ? 'down' : 'flat';
+        const arrow = { up: '▲', down: '▼', flat: '→' }[dir];
+        const tcol = { up: '#ff7043', down: '#42a5f5', flat: 'var(--secondary-text-color)' }[dir];
+        const amount = dir === 'flat' ? '' : ` ${d > 0 ? '+' : '−'}${gsNum(L, Math.abs(d), 1)}°`;
+        trendHtml = `<div class="trend" style="color:${tcol}" title="${gsEsc(gsT(L, 'trend_hour'))}">${arrow}${amount}</div>`;
+      }
     }
 
     // Scale bar (dynamic range around the value)
@@ -320,7 +420,7 @@ class GlowStatThermometerCard extends HTMLElement {
     const pos = (t) => ((t - lo) / spanC * 100).toFixed(1);
     const pct = ok ? Math.min(100, Math.max(0, (celsius - lo) / spanC * 100)) : 0;
     const grad = 'linear-gradient(90deg, '
-      + GS_STOPS.map((s) => 'rgb(' + s[1].join(',') + ') ' + pos(s[0]) + '%').join(', ') + ')';
+      + stops.map((s) => 'rgb(' + s[1].join(',') + ') ' + pos(s[0]) + '%').join(', ') + ')';
 
     // Background emoji
     let bgHtml = '';
@@ -343,12 +443,12 @@ class GlowStatThermometerCard extends HTMLElement {
 
     gsSetHtml(this.shadowRoot, `
       <style>${GS_THERMO_CSS}</style>
-      <ha-card style="background:${bg};border:${border}">
+      <ha-card tabindex="0" role="button" aria-label="${gsEsc(name)}" style="background:${bg};border:${border}">
         <div class="card">
           ${bgHtml}
           <div class="head"><div class="name">${gsEsc(name)}</div><div class="word" style="color:rgb(${c})">${gsEsc(gsT(L, word))}</div></div>
           ${batHtml}
-          <div class="temp" style="color:rgb(${c})">${ok ? gsNum(L, raw, 1) : '–'}<small> ${gsEsc(unit)}</small></div>
+          <div class="temp" style="color:rgb(${c})"><div>${ok ? gsNum(L, raw, 1) : '–'}<small> ${gsEsc(unit)}</small></div>${trendHtml}</div>
           ${sparkHtml}
           ${humHtml}
           <div class="bar">
@@ -362,9 +462,16 @@ class GlowStatThermometerCard extends HTMLElement {
 
     const card = this.shadowRoot.querySelector('ha-card');
     // The more-info dialog opens for the element that was clicked: battery, humidity or (default) temperature.
-    card.addEventListener('click', (ev) => {
+    const open = (ev) => {
       const el = ev.composedPath().find((n) => n.dataset && n.dataset.entity);
       gsFire(this, 'hass-more-info', { entityId: el ? el.dataset.entity : cfg.entity });
+    };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        open(ev);
+      }
     });
   }
 }
@@ -389,7 +496,12 @@ class GlowStatThermometerCardEditor extends HTMLElement {
       { name: 'humidity_entity', selector: { entity: { domain: 'sensor', device_class: 'humidity' } } },
       { name: 'battery_entity', selector: { entity: { domain: 'sensor', device_class: 'battery' } } },
       { name: 'show_sparkline', selector: { boolean: {} } },
-      { name: 'history_hours', selector: { number: { min: 1, max: 168, step: 1, mode: 'box' } } },
+      { name: 'history_hours', selector: { number: { min: 1, max: 720, step: 1, mode: 'box' } } },
+      { name: 'show_trend', selector: { boolean: {} } },
+      { name: 'show_dew_point', selector: { boolean: {} } },
+      { name: 'mold_humidity', selector: { number: { min: 0, max: 100, step: 1, mode: 'box' } } },
+      { name: 'comfort_min', selector: { number: { min: 5, max: 35, step: 0.5, mode: 'box' } } },
+      { name: 'comfort_max', selector: { number: { min: 5, max: 35, step: 0.5, mode: 'box' } } },
       { name: 'show_background_emoji', selector: { boolean: {} } },
       gsLanguageField(this._hass),
     ];
@@ -415,6 +527,7 @@ class GlowStatThermometerCardEditor extends HTMLElement {
     this._form.data = {
       show_sparkline: true,
       show_background_emoji: true,
+      show_trend: true,
       history_hours: 24,
       language: 'auto',
       ...this._config,

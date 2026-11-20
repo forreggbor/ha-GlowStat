@@ -1,6 +1,6 @@
 {
   "name": "ha-glowstat",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Glowing, compact Home Assistant dashboard cards for thermometers and climate control.",
   "license": "MIT",
   "author": "forreggbor",
@@ -8,5 +8,12 @@
     "type": "git",
     "url": "git+https://github.com/forreggbor/ha-GlowStat.git"
   },
-  "private": false
+  "private": false,
+  "scripts": {
+    "build": "./build.sh",
+    "test": "node --test \"tests/*.test.mjs\""
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1"
+  }
 }

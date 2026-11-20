@@ -15,6 +15,7 @@ Object.assign(GS_I18N.en, {
   icon: 'Icon', climate_entity: 'Climate entity', set_failed: 'Could not change the climate setting',
   ms_off: 'off', ms_auto: 'automatic', ms_heat_cool: 'switch', ms_heat: 'warm', ms_cool: 'cold', ms_dry: 'dehumidify', ms_fan_only: 'fan',
   ps_auto: 'schedule', ps_manual: 'manual', preset_temperatures: 'Preset temperatures',
+  temp_down: 'Lower the target temperature', temp_up: 'Raise the target temperature',
 });
 Object.assign(GS_I18N.hu, {
   c_heating: 'Fűt', c_cooling: 'Hűt', c_drying: 'Szárít', c_fan: 'Ventilál',
@@ -27,6 +28,7 @@ Object.assign(GS_I18N.hu, {
   icon: 'Ikon', climate_entity: 'Klíma entitás', set_failed: 'A beállítás módosítása nem sikerült',
   ms_off: 'kikapcs.', ms_auto: 'automata', ms_heat_cool: 'váltó', ms_heat: 'meleg', ms_cool: 'hideg', ms_dry: 'párátlan', ms_fan_only: 'ventilátor',
   ps_auto: 'program', ps_manual: 'kézi', preset_temperatures: 'Előbeállítás hőfokok',
+  temp_down: 'Alacsonyabb célhőmérséklet', temp_up: 'Magasabb célhőmérséklet',
 });
 
 const GS_MODE_RGB = {
@@ -102,7 +104,14 @@ function gsButtonLabel(hass, L, st, kind, value) {
 
 const GS_CLIMATE_CSS = `
   :host { display: block; }
-  ha-card { display: block; height: 100%; overflow: hidden; position: relative; }
+  ha-card { display: block; height: 100%; overflow: hidden; position: relative; container-type: inline-size; }
+  [tabindex]:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 6px; }
+  ha-card.live { animation: glowpulse 2.4s ease-in-out infinite; }
+  @keyframes glowpulse {
+    0%, 100% { box-shadow: inset 0 0 0 0 rgba(var(--g), 0); }
+    50% { box-shadow: inset 0 0 18px 0 rgba(var(--g), 0.35); }
+  }
+  @media (prefers-reduced-motion: reduce) { ha-card.live { animation: none; } }
   .card {
     box-sizing: border-box; height: 100%; min-height: 176px; padding: 10px;
     display: grid; gap: 8px; align-items: center; align-content: space-between;
@@ -137,6 +146,12 @@ const GS_CLIMATE_CSS = `
   .btn ha-icon { --mdc-icon-size: 22px; color: var(--secondary-text-color); }
   .btn.active { background: color-mix(in srgb, var(--primary-color) 22%, transparent); color: var(--primary-color); }
   .btn.active ha-icon { color: var(--primary-color); }
+  @container (max-width: 300px) {
+    .card { min-height: 150px; padding: 8px; gap: 6px; }
+    .btn .bs { display: none; }
+    .temp { font-size: 20px; }
+    .rb { width: 38px; height: 38px; }
+  }
 `;
 
 class GlowStatClimateCard extends HTMLElement {
@@ -146,6 +161,11 @@ class GlowStatClimateCard extends HTMLElement {
     this._sig = '';
     this._pending = null;
     this.shadowRoot.addEventListener('click', (ev) => this._onClick(ev));
+    this.shadowRoot.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      this._onClick(ev);
+    });
   }
 
   static getConfigElement() {
@@ -230,7 +250,7 @@ class GlowStatClimateCard extends HTMLElement {
     const hass = this._hass;
     const cfg = this._config;
     const items = Array.isArray(cfg.controls) ? cfg.controls : gsDefaultControls(st, cfg.controls);
-    const temps = cfg.preset_temperatures || {};
+    const temps = { ...(st.attributes.preset_temperatures || {}), ...(cfg.preset_temperatures || {}) };
     const out = [];
     items.forEach((item) => {
       const o = gsParseControl(item);
@@ -285,12 +305,13 @@ class GlowStatClimateCard extends HTMLElement {
     const rbRgb = GS_MODE_RGB[st.state];
     const rbStyle = rbRgb ? `color:rgb(${rbRgb});border-color:rgba(${rbRgb},0.8)` : 'color:var(--primary-color)';
     const curTxt = a.current_temperature === undefined || a.current_temperature === null
-      ? '' : `<div class="cur more" style="color:${valCol}"><ha-icon icon="mdi:thermometer"></ha-icon>${gsNum(L, Number(a.current_temperature), 1)} ${gsEsc(unit)}</div>`;
+      ? '' : `<div class="cur more" role="button" tabindex="0" aria-label="${gsEsc(name)}" style="color:${valCol}"><ha-icon icon="mdi:thermometer"></ha-icon>${gsNum(L, Number(a.current_temperature), 1)} ${gsEsc(unit)}</div>`;
 
+    const live = Boolean(rgb) && a.hvac_action !== undefined && a.hvac_action !== null && Boolean(GS_ACTION_MODE[a.hvac_action]);
     const btns = this._buttons(st);
     const btnHtml = btns.length
       ? `<div class="btns">${btns.map((b) => `
-          <div class="btn${b.active ? ' active' : ''}" role="button" data-kind="${b.kind}" data-value="${gsEsc(b.value)}">
+          <div class="btn${b.active ? ' active' : ''}" role="button" tabindex="0" aria-pressed="${b.active}" aria-label="${gsEsc(b.label)}" data-kind="${b.kind}" data-value="${gsEsc(b.value)}">
             <ha-icon icon="${gsEsc(b.icon)}"></ha-icon><span class="bl">${gsEsc(b.label)}</span>${b.sub ? `<span class="bs">${gsEsc(b.sub)}</span>` : ''}
           </div>`).join('')}</div>` : '';
 
@@ -301,14 +322,14 @@ class GlowStatClimateCard extends HTMLElement {
 
     gsSetHtml(this.shadowRoot, `
       <style>${GS_CLIMATE_CSS}</style>
-      <ha-card style="background:${bg};border:${border}">
+      <ha-card class="${live ? 'live' : ''}" style="--g:${rgb || '0,0,0'};background:${bg};border:${border}">
         <div class="card">
-          <div class="head more"><ha-icon icon="${gsEsc(icon)}" style="color:${col}"></ha-icon>
+          <div class="head more" role="button" tabindex="0" aria-label="${gsEsc(name)}"><ha-icon icon="${gsEsc(icon)}" style="color:${col}"></ha-icon>
             <div><div class="name">${gsEsc(name)}</div><div class="status" style="color:${col}">${gsEsc(this._statusText(st))}</div></div></div>
           ${curTxt}
-          <div class="rb minus${dis}" style="${rbStyle}" role="button" data-kind="step" data-value="-1"><ha-icon icon="mdi:minus"></ha-icon></div>
-          <div class="temp more" style="color:${valCol}">${targetTxt} ${gsEsc(unit)}</div>
-          <div class="rb plus${dis}" style="${rbStyle}" role="button" data-kind="step" data-value="1"><ha-icon icon="mdi:plus"></ha-icon></div>
+          <div class="rb minus${dis}" style="${rbStyle}" role="button" tabindex="0" aria-label="${gsEsc(gsT(L, 'temp_down'))}" data-kind="step" data-value="-1"><ha-icon icon="mdi:minus"></ha-icon></div>
+          <div class="temp more" role="button" tabindex="0" aria-label="${gsEsc(name)}" style="color:${valCol}">${targetTxt} ${gsEsc(unit)}</div>
+          <div class="rb plus${dis}" style="${rbStyle}" role="button" tabindex="0" aria-label="${gsEsc(gsT(L, 'temp_up'))}" data-kind="step" data-value="1"><ha-icon icon="mdi:plus"></ha-icon></div>
           ${btnHtml}
         </div>
       </ha-card>`);

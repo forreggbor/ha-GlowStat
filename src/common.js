@@ -14,13 +14,35 @@ const GS_STOPS = [
 ];
 
 /**
+ * Color stops with a configurable comfort range: the green plateau runs from `cmin` to `cmax`
+ * (°C), the cold and hot stops move with it so the stops always stay in ascending order.
+ * @param {number} [cmin] Lower end of the comfort range (default 20).
+ * @param {number} [cmax] Upper end of the comfort range (default 22).
+ * @returns {Array} Stops in the GS_STOPS format.
+ */
+function gsStops(cmin, cmax) {
+  const lo = Number.isFinite(Number(cmin)) && cmin !== undefined && cmin !== null ? Number(cmin) : 20;
+  let hi = Number.isFinite(Number(cmax)) && cmax !== undefined && cmax !== null ? Number(cmax) : 22;
+  if (hi < lo) hi = lo;
+  return [
+    [-10, GS_STOPS[0][1]],
+    [Math.min(8, lo - 2), GS_STOPS[1][1]],
+    [lo, GS_STOPS[2][1]],
+    [hi, GS_STOPS[3][1]],
+    [Math.max(30, hi + 2), GS_STOPS[4][1]],
+    [Math.max(38, hi + 10), GS_STOPS[5][1]],
+  ];
+}
+
+/**
  * Interpolated RGB color for a temperature in °C.
  * @param {number} celsius Temperature in °C (NaN gives neutral gray).
+ * @param {Array} [stops] Color stops, defaults to GS_STOPS.
  * @returns {number[]} [r, g, b]
  */
-function gsColor(celsius) {
+function gsColor(celsius, stops) {
   if (isNaN(celsius)) return [150, 150, 150];
-  const S = GS_STOPS;
+  const S = stops || GS_STOPS;
   if (celsius <= S[0][0]) return S[0][1];
   if (celsius >= S[S.length - 1][0]) return S[S.length - 1][1];
   for (let i = 0; i < S.length - 1; i++) {
@@ -54,6 +76,14 @@ const GS_I18N = {
     history_hours: 'History length (hours)',
     show_background_emoji: 'Show background emoji',
     language: 'Language',
+    show_trend: 'Show trend arrow',
+    show_dew_point: 'Show dew point',
+    mold_humidity: 'Mold warning from humidity (%)',
+    comfort_min: 'Comfort range from (°C)',
+    comfort_max: 'Comfort range to (°C)',
+    trend_hour: 'change in the last hour',
+    dew_point: 'Dew point',
+    mold_risk: 'Mold risk',
     language_auto: 'Automatic (Home Assistant)',
     language_hu: 'Magyar',
     language_en: 'English',
@@ -78,6 +108,14 @@ const GS_I18N = {
     history_hours: 'Előzmény hossza (óra)',
     show_background_emoji: 'Háttér emoji megjelenítése',
     language: 'Nyelv',
+    show_trend: 'Trendnyíl megjelenítése',
+    show_dew_point: 'Harmatpont megjelenítése',
+    mold_humidity: 'Penészfigyelmeztetés páratartalomtól (%)',
+    comfort_min: 'Komfortzóna alsó határa (°C)',
+    comfort_max: 'Komfortzóna felső határa (°C)',
+    trend_hour: 'változás az elmúlt órában',
+    dew_point: 'Harmatpont',
+    mold_risk: 'Penészveszély',
     language_auto: 'Automatikus (Home Assistant)',
     language_hu: 'Magyar',
     language_en: 'English',
