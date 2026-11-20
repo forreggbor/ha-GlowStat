@@ -1,6 +1,6 @@
 {
   "name": "ha-glowstat",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Glowing, compact Home Assistant dashboard cards for thermometers and climate control.",
   "license": "MIT",
   "author": "forreggbor",

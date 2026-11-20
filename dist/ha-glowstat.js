@@ -1,6 +1,6 @@
-/* GlowStat v0.2.0 - MIT - https://github.com/forreggbor/ha-GlowStat */
+/* GlowStat v0.2.1 - MIT - https://github.com/forreggbor/ha-GlowStat */
 (() => {
-const GS_VERSION = '0.2.0';
+const GS_VERSION = '0.2.1';
 /**
  * Shared helpers for all GlowStat cards: temperature color scale,
  * translations, escaping and small DOM utilities.

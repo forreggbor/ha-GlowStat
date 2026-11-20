@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-20
+
+| Category | Description |
+|----------|-------------|
+| Added    | The repository is checked automatically against the Marketplace rules |
+| Changed  | The README now has screenshots, option tables and an install button |
+
+### Added
+
+- Every change, and once a day, the repository is checked automatically against the rules of the Home Assistant Marketplace, so problems that would block a listing are found early.
+
+### Changed
+
+- The README now shows screenshots of both cards, lists every option of each card, gives a YAML example for the control buttons and has a button that opens the repository in the Home Assistant Marketplace.
+
 ## [0.2.0] - 2026-11-20
 
 | Category | Description |
