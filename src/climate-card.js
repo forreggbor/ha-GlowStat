@@ -18,6 +18,7 @@ Object.assign(GS_I18N.en, {
   temp_down: 'Lower the target temperature', temp_up: 'Raise the target temperature',
   f_sensor_unavailable: 'Sensor lost – heating off', f_sensor_stale: 'Sensor silent – heating off',
   f_sensor: 'Sensor fault', f_relay: 'Relay not responding',
+  f_backup: 'Backup sensor', f_limp: 'Emergency cycle', f_limp_n: 'Emergency cycle: {on} of {period} min',
 });
 Object.assign(GS_I18N.hu, {
   c_heating: 'Fűt', c_cooling: 'Hűt', c_drying: 'Szárít', c_fan: 'Ventilál',
@@ -33,6 +34,7 @@ Object.assign(GS_I18N.hu, {
   temp_down: 'Alacsonyabb célhőmérséklet', temp_up: 'Magasabb célhőmérséklet',
   f_sensor_unavailable: 'Érzékelő kiesett – fűtés ki', f_sensor_stale: 'Érzékelő néma – fűtés ki',
   f_sensor: 'Érzékelő hiba', f_relay: 'A relé nem válaszol',
+  f_backup: 'Tartalék érzékelő', f_limp: 'Vészciklus', f_limp_n: 'Vészciklus: {on} / {period} perc',
 });
 
 const GS_MODE_RGB = {
@@ -219,7 +221,7 @@ class GlowStatClimateCard extends HTMLElement {
     if (!st) return '∅|' + gsLangObj(this._hass, this._config).language;
     const a = st.attributes;
     return [st.state, a.hvac_action, a.preset_mode, a.temperature, a.current_temperature, a.min_temp, a.max_temp,
-      a.sensor_fault, JSON.stringify(a.relay_fault || []), this._pending, gsLangObj(this._hass, this._config).language, JSON.stringify(this._config.preset_temperatures || {})].join('|');
+      a.sensor_fault, a.sensor_source, a.limp_on_minutes, a.limp_period_minutes, JSON.stringify(a.relay_fault || []), this._pending, gsLangObj(this._hass, this._config).language, JSON.stringify(this._config.preset_temperatures || {})].join('|');
   }
 
   _stepOf(a) {
@@ -237,19 +239,31 @@ class GlowStatClimateCard extends HTMLElement {
   }
 
   /**
-   * Fail-safe state reported by SmartHeatZones in the attributes `sensor_fault` (text) and
-   * `relay_fault` (list). Returns the warning text in the card language, or null when all is fine.
+   * Fail-safe state reported by SmartHeatZones. Returns `{ text, hard }` or null when all is fine.
+   * `hard` (red, no pulsing) is only for a relay that does not respond, and for SmartHeatZones before
+   * 1.12.0 (no `sensor_source` attribute), where `sensor_fault` still meant "heating off". Since 1.12.0
+   * the zone keeps heating on its backup sensor or in the emergency cycle, so those are a neutral hint.
    */
   _fault(st) {
     const L = gsLangObj(this._hass, this._config);
     const a = st.attributes;
-    if (a.sensor_fault) {
+    if (Array.isArray(a.relay_fault) && a.relay_fault.length) return { text: gsT(L, 'f_relay'), hard: true };
+    if (!a.sensor_fault) return null;
+    if (a.sensor_source === undefined || a.sensor_source === null) {
       const key = 'f_' + a.sensor_fault;
       const text = gsT(L, key);
-      return text === key ? gsT(L, 'f_sensor') : text;
+      return { text: text === key ? gsT(L, 'f_sensor') : text, hard: true };
     }
-    if (Array.isArray(a.relay_fault) && a.relay_fault.length) return gsT(L, 'f_relay');
-    return null;
+    if (a.sensor_source === 'backup') return { text: gsT(L, 'f_backup'), hard: false };
+    if (a.sensor_source === 'none') {
+      const on = Number(a.limp_on_minutes);
+      const period = Number(a.limp_period_minutes);
+      if (a.limp_on_minutes != null && a.limp_period_minutes != null && isFinite(on) && isFinite(period)) {
+        return { text: gsT(L, 'f_limp_n').replace('{on}', gsNum(L, on, 0)).replace('{period}', gsNum(L, period, 0)), hard: false };
+      }
+      return { text: gsT(L, 'f_limp'), hard: false };
+    }
+    return { text: gsT(L, 'f_sensor'), hard: false };
   }
 
   _statusText(st) {
@@ -313,7 +327,8 @@ class GlowStatClimateCard extends HTMLElement {
     const a = st.attributes;
     const mode = this._colorMode(st);
     const fault = this._fault(st);
-    const rgb = fault ? GS_FAULT_RGB : (mode ? GS_MODE_RGB[mode] : null);
+    const hard = Boolean(fault && fault.hard);
+    const rgb = hard ? GS_FAULT_RGB : (mode ? GS_MODE_RGB[mode] : null);
     const col = rgb ? `rgb(${rgb})` : 'var(--secondary-text-color)';
     const valCol = rgb ? `rgb(${rgb})` : 'var(--primary-text-color)';
     const name = cfg.name || a.friendly_name || cfg.entity;
@@ -330,7 +345,7 @@ class GlowStatClimateCard extends HTMLElement {
     const curTxt = a.current_temperature === undefined || a.current_temperature === null
       ? '' : `<div class="cur more" role="button" tabindex="0" aria-label="${gsEsc(name)}" style="color:${valCol}"><ha-icon icon="mdi:thermometer"></ha-icon>${gsNum(L, Number(a.current_temperature), 1)} ${gsEsc(unit)}</div>`;
 
-    const live = Boolean(rgb) && !fault && a.hvac_action !== undefined && a.hvac_action !== null && Boolean(GS_ACTION_MODE[a.hvac_action]);
+    const live = Boolean(rgb) && !hard && a.hvac_action !== undefined && a.hvac_action !== null && Boolean(GS_ACTION_MODE[a.hvac_action]);
     const btns = this._buttons(st);
     const btnHtml = btns.length
       ? `<div class="btns">${btns.map((b) => `
@@ -347,8 +362,8 @@ class GlowStatClimateCard extends HTMLElement {
       <style>${GS_CLIMATE_CSS}</style>
       <ha-card class="${live ? 'live' : ''}" style="--g:${rgb || '0,0,0'};background:${bg};border:${border}">
         <div class="card">
-          <div class="head more" role="button" tabindex="0" aria-label="${gsEsc(fault ? name + ': ' + fault : name)}"><ha-icon icon="${gsEsc(icon)}" style="color:${col}"></ha-icon>
-            <div><div class="name">${gsEsc(name)}</div><div class="status" style="color:${col}">${gsEsc(fault ? '⚠ ' + fault : this._statusText(st))}</div></div></div>
+          <div class="head more" role="button" tabindex="0" aria-label="${gsEsc(fault ? name + ': ' + fault.text : name)}"><ha-icon icon="${gsEsc(icon)}" style="color:${col}"></ha-icon>
+            <div><div class="name">${gsEsc(name)}</div><div class="status" style="color:${col}">${gsEsc(hard ? '⚠ ' + fault.text : fault ? this._statusText(st) + ' · ' + fault.text : this._statusText(st))}</div></div></div>
           ${curTxt}
           <div class="rb minus${dis}" style="${rbStyle}" role="button" tabindex="0" aria-label="${gsEsc(gsT(L, 'temp_down'))}" data-kind="step" data-value="-1"><ha-icon icon="mdi:minus"></ha-icon></div>
           <div class="temp more" role="button" tabindex="0" aria-label="${gsEsc(name)}" style="color:${valCol}">${targetTxt} ${gsEsc(unit)}</div>

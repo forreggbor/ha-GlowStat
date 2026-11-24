@@ -36,7 +36,7 @@ const setup = (ov, cfg = {}, lang = 'en') => {
   const m = mkHass({ [OV]: ov });
   m.hass.language = lang;
   m.hass.locale = { language: lang };
-  const el = mount(win, 'glowstat-heating-card', { entity: OV, show_timeline: false, show_eta: false, ...cfg }, m.hass);
+  const el = mount(win, 'glowstat-heating-card', { entity: OV, layout: 'list', show_timeline: false, show_eta: false, ...cfg }, m.hass);
   return { win, el, ...m };
 };
 
@@ -201,7 +201,7 @@ const router = ({ climate = [], boiler = [], sensor = [] } = {}) => (path) => {
 function setupHist(ov, history, cfg = {}) {
   const win = boot();
   const m = mkHass({ [OV]: ov }, { history });
-  const el = mount(win, 'glowstat-heating-card', { entity: OV, ...cfg }, m.hass);
+  const el = mount(win, 'glowstat-heating-card', { entity: OV, layout: 'list', ...cfg }, m.hass);
   return { win, el, ...m };
 }
 
@@ -333,7 +333,7 @@ test('"All away" and "All eco" set the preset on every zone', async () => {
 
 test('show_actions false hides the buttons', () => {
   const { el } = setup(twoZones(), { show_actions: false });
-  assert.equal(el.shadowRoot.querySelector('.act'), null);
+  assert.equal(el.shadowRoot.querySelector('.act[data-preset]'), null);
 });
 
 test('one failing zone does not stop the others and is named in the message', async () => {
@@ -420,4 +420,166 @@ test('a rejected subscription warns once and the card keeps working', async () =
 test('the row shows the adjusted target the control compares against (radiator thermostat offset)', () => {
   const { el } = setup(overview({ zones: [zone({ current: 22, target: 21, adjusted_target: 24, on_below: 23.5, off_above: 24.5, reason: { code: 'needs_heat' } })] }));
   assert.match(text(el, '.ztemp'), /22\.0.*24\.0/);
+});
+
+// ---- Layouts, zone sheet (#4) ----
+
+const tilesCard = (ov, cfg = {}, lang = 'en') => setup(ov, { layout: 'tiles', ...cfg }, lang);
+const q = (el, sel) => el.shadowRoot.querySelector(sel);
+const sheetOf = (el) => q(el, '.sheet');
+
+test('the default layout is tiles with a ring gauge, one sentence and no row body', () => {
+  const win = boot();
+  const m = mkHass({ [OV]: overview() });
+  const el = mount(win, 'glowstat-heating-card', { entity: OV, show_timeline: false, show_eta: false }, m.hass);
+  assert.ok(q(el, '.zones.tiles .zone .gauge'));
+  assert.equal(q(el, '.zbody'), null);
+  assert.equal(text(el, '.zone .sent b'), 'Idle');
+  assert.match(text(el, '.zone .reason'), /Idle – heats below 20\.5°/);
+  assert.match(q(el, '.gauge').getAttribute('aria-label'), /20[.,]7/);
+});
+
+test('the list layout has a row per zone that opens and stays open across updates', () => {
+  const { win, el, hass } = setup(overview());
+  assert.ok(q(el, '.zones.list .zone .zbody'));
+  const hit = q(el, '.rowhit');
+  assert.equal(hit.getAttribute('aria-expanded'), 'false');
+  press(win, hit);
+  assert.ok(q(el, '.zone').classList.contains('open'));
+  assert.equal(q(el, '.rowhit').getAttribute('aria-expanded'), 'true');
+  hass.states = { [OV]: overview({ zones: [zone({ current: 20.9 })] }) };
+  el.hass = hass;
+  assert.ok(q(el, '.zone').classList.contains('open'), 'a repaint keeps the row open');
+  press(win, q(el, '.rowhit'));
+  assert.ok(!q(el, '.zone').classList.contains('open'));
+});
+
+test('the state badge: heating, door open, relay fault and off each get their own color class', () => {
+  const badge = (zoneOver) => q(tilesCard(overview({ zones: [zone(zoneOver)] })).el, '.zone .gauge').getAttribute('class');
+  assert.match(badge({ hvac_action: 'heating', reason: { code: 'needs_heat' } }), /st-heat/);
+  assert.match(badge({ reason: { code: 'door_open' } }), /st-warn/);
+  assert.match(badge({ relay_fault: ['switch.r'] }), /st-bad/);
+  assert.match(badge({ hvac_mode: 'off', reason: { code: 'hvac_off' } }), /st-off/);
+  assert.match(badge({}), /st-idle/);
+  assert.equal(text(tilesCard(overview({ zones: [zone({ relay_fault: ['switch.r'] })] })).el, '.zone .sent b'), 'Relay not responding');
+  assert.equal(text(tilesCard(overview({ zones: [zone({ reason: { code: 'door_open' } })] }), {}, 'hu').el, '.zone .sent b'), 'Ajtó nyitva');
+});
+
+test('a tile opens the zone sheet; the close button, the backdrop and Escape close it', () => {
+  const { win, el } = tilesCard(twoZones());
+  assert.equal(sheetOf(el), null);
+  press(win, q(el, '.zhit'));
+  assert.ok(sheetOf(el));
+  assert.equal(text(el, '.sheet h2'), 'Living');
+  press(win, q(el, '.x'));
+  assert.equal(sheetOf(el), null);
+  press(win, q(el, '.zhit'));
+  press(win, q(el, '.sbg'));
+  assert.equal(sheetOf(el), null, 'backdrop closes');
+  press(win, q(el, '.zhit'));
+  press(win, q(el, '.sheet'));
+  assert.ok(sheetOf(el), 'a click inside the sheet keeps it open');
+  q(el, '.sheet').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
+  assert.equal(sheetOf(el), null, 'Escape closes');
+});
+
+test('the sheet stays open across updates and closes when the zone is gone', () => {
+  const { win, el, hass } = tilesCard(twoZones());
+  press(win, q(el, '.zhit'));
+  hass.states = { [OV]: overview({ zones: [zone({ current: 20.9 }), zone({ name: 'Bedroom', entity_id: 'climate.bedroom' })] }) };
+  el.hass = hass;
+  assert.ok(sheetOf(el));
+  hass.states = { [OV]: overview({ zones: [zone({ name: 'Bedroom', entity_id: 'climate.bedroom' })] }) };
+  el.hass = hass;
+  assert.equal(sheetOf(el), null);
+});
+
+test('sheet presets call climate.set_preset_mode for that zone and mark the current one', async () => {
+  const { win, el, calls } = tilesCard(twoZones());
+  press(win, q(el, '.zhit'));
+  assert.ok(q(el, '.pbtn[data-zpreset="auto"]').classList.contains('on'));
+  press(win, q(el, '.pbtn[data-zpreset="eco"]'));
+  await tick();
+  same(calls, [['climate', 'set_preset_mode', { entity_id: 'climate.living', preset_mode: 'eco' }]]);
+});
+
+test('the target stepper changes the zone target by half a degree, within 5 to 35', async () => {
+  const { win, el, calls } = tilesCard(overview({ zones: [zone({ target: 21 })] }));
+  press(win, q(el, '.zhit'));
+  press(win, q(el, '[data-step="0.5"]'));
+  press(win, q(el, '[data-step="-0.5"]'));
+  await tick();
+  same(calls, [
+    ['climate', 'set_temperature', { entity_id: 'climate.living', temperature: 21.5 }],
+    ['climate', 'set_temperature', { entity_id: 'climate.living', temperature: 20.5 }],
+  ]);
+  const top = tilesCard(overview({ zones: [zone({ target: 35 })] }));
+  press(top.win, q(top.el, '.zhit'));
+  press(top.win, q(top.el, '[data-step="0.5"]'));
+  await tick();
+  assert.equal(top.calls[0][2].temperature, 35);
+});
+
+test('a failing sheet call is logged and shown as a notification, the sheet stays', async () => {
+  const win = boot();
+  const errors = [];
+  win.console.error = (...a) => errors.push(a);
+  const m = mkHass({ [OV]: overview() });
+  m.hass.callService = async () => { throw new Error('nope'); };
+  const el = mount(win, 'glowstat-heating-card', { entity: OV, show_timeline: false, show_eta: false }, m.hass);
+  const messages = [];
+  win.document.addEventListener('hass-notification', (e) => messages.push(e.detail.message));
+  press(win, q(el, '.zhit'));
+  press(win, q(el, '.pbtn[data-zpreset="away"]'));
+  await tick();
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /Could not change the zone.*climate\.living/);
+  assert.ok(errors.length >= 1);
+  assert.ok(sheetOf(el));
+});
+
+test('"All automatic" sets the auto preset on every zone', async () => {
+  const { win, el, calls } = tilesCard(twoZones(), { show_actions: true });
+  press(win, act(el, 'auto'));
+  await tick();
+  same(calls, [
+    ['climate', 'set_preset_mode', { entity_id: 'climate.living', preset_mode: 'auto' }],
+    ['climate', 'set_preset_mode', { entity_id: 'climate.bedroom', preset_mode: 'auto' }],
+  ]);
+});
+
+test('the sheet draws the chart from the zone history; without temperature history there is none', async () => {
+  const hist = (rows) => rows.map(([minAgo, action, cur, tgt]) => ({ state: 'heat', attributes: { hvac_action: action, current_temperature: cur, temperature: tgt }, last_changed: iso(minAgo * MIN) }));
+  const withHist = setupHist(overview(), router({ climate: hist([[600, 'idle', 19.5, 19], [400, 'heating', 19.2, 21], [200, 'heating', 20.4, 21], [30, 'idle', 21, 21]]) }), { layout: 'tiles', show_eta: false });
+  await tick();
+  press(withHist.win, q(withHist.el, '.zhit'));
+  const svg = q(withHist.el, '.sheet svg.chart');
+  assert.ok(svg);
+  assert.ok(svg.querySelector('path.tc') && svg.querySelector('path.tg') && svg.querySelector('rect.hb'));
+  const bare = setupHist(overview(), router(), { layout: 'tiles', show_eta: false });
+  await tick();
+  press(bare.win, q(bare.el, '.zhit'));
+  assert.equal(q(bare.el, '.sheet svg.chart'), null);
+  assert.ok(sheetOf(bare.el));
+});
+
+test('the editor offers the layout and the card falls back to tiles for an unknown value', () => {
+  const win = boot();
+  const ed = win.document.createElement('glowstat-heating-card-editor');
+  const m = mkHass({});
+  ed.setConfig({ entity: OV });
+  ed.hass = m.hass;
+  const field = ed._form.schema.find((f) => f.name === 'layout');
+  same(field.selector.select.options.map((o) => o.value), ['tiles', 'list']);
+  const odd = mount(win, 'glowstat-heating-card', { entity: OV, layout: 'weird', show_timeline: false, show_eta: false }, mkHass({ [OV]: overview() }).hass);
+  assert.ok(q(odd, '.zones.tiles'));
+});
+
+test('adjacent heating samples are drawn as one band in the chart', async () => {
+  const rows = [[300, 'idle', 19], [240, 'heating', 19.2], [200, 'heating', 19.8], [160, 'heating', 20.4], [100, 'idle', 21], [10, 'idle', 20.8]]
+    .map(([minAgo, action, cur]) => ({ state: 'heat', attributes: { hvac_action: action, current_temperature: cur, temperature: 21 }, last_changed: iso(minAgo * MIN) }));
+  const { win, el } = setupHist(overview(), router({ climate: rows }), { layout: 'tiles', show_eta: false });
+  await tick();
+  press(win, q(el, '.zhit'));
+  assert.equal(el.shadowRoot.querySelectorAll('.sheet rect.hb').length, 1);
 });

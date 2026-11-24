@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-24
+
+| Category | Description |
+|----------|-------------|
+| Added    | The heating card has two layouts to choose from: tiles with ring gauges, and a list with expandable rows |
+| Added    | Every zone says in one short sentence what it is doing, with a color for the state |
+| Added    | Tapping a zone opens a sheet with a large gauge, preset buttons, a target stepper and a 24 hour chart |
+| Added    | A new "All automatic" button sets every zone back to its schedule |
+| Changed  | The heating card is easier to read at a glance: ring gauge instead of a bar, a flame icon for the boiler |
+
+### Added
+
+- **Two layouts.** Choose `tiles` (a grid of ring gauges, the default) or `list` (one row per zone that opens to the switch-on and switch-off limits, the next change and the timeline) in the card options or in the dashboard editor (closes #4).
+- **Plain-language zones.** Each zone shows a short state such as "Heating", "Idle", "Door open" or "Relay not responding", the reason below it, and a color: orange heating, blue idle, amber needs attention, red a relay that does not respond.
+- **Zone sheet.** Tap a tile, or "Details" in a list row, to open a sheet with a large gauge, the Auto, Comfort, Eco and Away buttons, a target stepper in half-degree steps and a chart of the temperature, the target and the heating periods. The stepper puts the zone in manual mode.
+- **All automatic.** A third quick action next to "All away" and "All eco".
+
+### Changed
+
+- **Easier to read.** The ring gauge shows how close the zone is to its target: the filled arc is the current temperature, the white dot the target, the pale band the switch-on and switch-off limits.
+
+## [0.5.1] - 2026-11-24
+
+| Category | Description |
+|----------|-------------|
+| Fixed    | The climate card no longer says "heating off" while the zone keeps heating on its backup sensor |
+| Fixed    | The climate card no longer turns red and stops pulsing in the emergency cycle |
+| Added    | The climate card shows a short neutral hint for the backup sensor and the emergency cycle |
+
+### Fixed
+
+- **Wrong "heating off" warning.** Since SmartHeatZones 1.12.0 a zone keeps heating on a backup sensor, or in an emergency cycle, when its own sensor is lost. The climate card still showed "Sensor lost – heating off", turned red and stopped pulsing. It now keeps its normal look. Red is used only for a relay that does not respond (closes #2).
+
+### Added
+
+- **Backup sensor and emergency cycle hints.** The status line adds "Backup sensor", or "Emergency cycle: 10 of 30 min" with the current cycle, next to the normal status such as "Heating". With a SmartHeatZones older than 1.12.0 the card behaves as before.
+
 ## [0.5.0] - 2026-11-23
 
 | Category | Description |

@@ -272,3 +272,42 @@ test('a healthy zone shows its normal status and the card updates when the fault
   el.hass = m.hass;
   assert.equal(text(el, '.status'), 'Idle');
 });
+
+test('a zone on its backup sensor keeps its normal look and shows a neutral hint (#2)', () => {
+  const win = boot();
+  const m = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_stale', sensor_source: 'backup', relay_fault: [], hvac_action: 'heating' }) });
+  const el = mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, m.hass);
+  assert.equal(text(el, '.status'), 'Heating · Backup sensor');
+  assert.doesNotMatch(el.shadowRoot.querySelector('ha-card').getAttribute('style') || '', /239,83,80/);
+  assert.ok(el.shadowRoot.querySelector('ha-card').classList.contains('live'), 'still pulsing while heating');
+  const hu = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_stale', sensor_source: 'backup', hvac_action: 'heating' }) });
+  assert.equal(text(mount(win, 'glowstat-climate-card', { entity: 'climate.h', language: 'hu' }, hu.hass), '.status'), 'Fűt · Tartalék érzékelő');
+});
+
+test('a zone in the emergency cycle shows the cycle, not "heating off" (#2)', () => {
+  const win = boot();
+  const m = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_unavailable', sensor_source: 'none', limp_active: true, limp_on_minutes: 10, limp_period_minutes: 30, hvac_action: 'heating' }) });
+  const el = mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, m.hass);
+  assert.equal(text(el, '.status'), 'Heating · Emergency cycle: 10 of 30 min');
+  assert.doesNotMatch(el.shadowRoot.querySelector('ha-card').getAttribute('style') || '', /239,83,80/);
+  const bare = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_unavailable', sensor_source: 'none', hvac_action: 'idle' }) });
+  assert.equal(text(mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, bare.hass), '.status'), 'Idle · Emergency cycle');
+});
+
+test('a relay fault stays red even when the sensor is on backup (#2)', () => {
+  const win = boot();
+  const m = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_stale', sensor_source: 'backup', relay_fault: ['switch.r'], hvac_action: 'heating' }) });
+  const el = mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, m.hass);
+  assert.equal(text(el, '.status'), '⚠ Relay not responding');
+  assert.match(el.shadowRoot.querySelector('ha-card').getAttribute('style'), /239,83,80/);
+});
+
+test('the card repaints when the sensor switches from backup to primary (#2)', () => {
+  const win = boot();
+  const m = mkHass({ 'climate.h': climateState({ sensor_fault: 'sensor_stale', sensor_source: 'backup', hvac_action: 'heating' }) });
+  const el = mount(win, 'glowstat-climate-card', { entity: 'climate.h' }, m.hass);
+  assert.equal(text(el, '.status'), 'Heating · Backup sensor');
+  m.hass.states = { 'climate.h': climateState({ sensor_fault: 'sensor_stale', sensor_source: 'none', hvac_action: 'heating' }) };
+  el.hass = m.hass;
+  assert.equal(text(el, '.status'), 'Heating · Emergency cycle');
+});

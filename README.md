@@ -47,7 +47,7 @@ One card for heating and air conditioners: target temperature with `+` / `-`, th
 state (heating, cooling, idle, off) and control buttons. The glow follows what the device is doing and pulses
 while it is actually heating, cooling or drying.
 
-For zones of [SmartHeatZones](https://github.com/forreggbor/SmartHeatZones) (version 1.10.1 or newer) the card also shows the fail-safe state of the zone: when the zone has switched its heating off because its temperature sensor was lost or went silent (attribute `sensor_fault`), or when a relay does not respond (attribute `relay_fault`), the status line shows a warning in the card language, the glow turns red and the pulsing stops. Climate entities of other integrations are not affected.
+For zones of [SmartHeatZones](https://github.com/forreggbor/SmartHeatZones) (version 1.10.1 or newer) the card also shows the fail-safe state of the zone: when a relay does not respond (attribute `relay_fault`) the status line shows a warning in the card language, the glow turns red and the pulsing stops. When the zone keeps heating on its backup sensor or in the emergency cycle (SmartHeatZones 1.12.0 or newer, attributes `sensor_source` and `sensor_fault`), the card keeps its normal look and adds a short hint to the status line. With older SmartHeatZones versions a lost sensor still shows the red "heating off" warning. Climate entities of other integrations are not affected.
 
 The control buttons are read from the entity itself, nothing is hard-coded. In the editor you pick them one by one
 from every mode the entity offers: operating modes, presets, fan modes and swing modes, and you can reorder them.
@@ -89,22 +89,28 @@ overview entity `sensor.smartheatzones_overview`, so no zone has to be set up on
 - **Boiler:** running or off with the duration, which zones hold it (zones that only joined by afterheat are marked),
   and today's starts, runtime and afterheat joins. After a Home Assistant restart it says when the counting began.
   A boiler command that failed is shown in red.
-- **Zones:** current and target temperature, a bar with the on and off thresholds, the reason for the zone's state
-  ("Idle - heats below 20.5°, target 21°", "Door or window open", ...), a chip when the zone runs on a backup
-  sensor, in the emergency cycle or by afterheat, and the next scheduled change. Red is used only for a relay that
-  does not respond.
+- **Zones:** a ring gauge (filled arc = now, white dot = target, pale band = on and off thresholds), a short
+  sentence for the state ("Heating", "Door open", ...) with the reason ("Idle - heats below 20.5°, target 21°"),
+  a chip when the zone runs on a backup sensor, in the emergency cycle or by afterheat, and the next scheduled
+  change. Orange is heating, blue idle, amber needs attention; red is used only for a relay that does not respond.
+  Two layouts, chosen with `layout`: **tiles** (a grid of ring gauges) and **list** (one row per zone that opens to
+  the thresholds, the next change and the timeline).
+- **Zone sheet:** tap a tile (or "Details" in a list row) to open a sheet with a large gauge, preset buttons
+  (Auto, Comfort, Eco, Away), a target stepper (0.5 degree steps; this puts the zone in manual mode) and the
+  24 hour chart of temperature, target and heating periods.
 - **Timelines:** when each zone and the boiler were heating over the last hours (from the recorded history).
 - **Time to target:** `~25 min to target` for a heating zone, shown only when the temperature rises clearly; it is an
   estimate from the last hour of the zone sensor.
 - **Sensor network:** one chip per integration, for example `zha 5/5 ok` or `zha: 2 of 5 silent`.
-- **Quick actions:** "All away" and "All eco" set the preset of every zone.
+- **Quick actions:** "All away", "All eco" and "All automatic" set the preset of every zone.
 - **Live flash:** a zone row flashes for a few seconds when SmartHeatZones reports a fail-safe change. This needs a
   Home Assistant **admin** user (events can only be subscribed by admins); other users simply see no flash.
 
 | Option | Description |
 |--------|-------------|
 | `entity` | The overview sensor (`sensor.smartheatzones_overview`), required. |
-| `history_hours` | Length of the timelines, 1 to 72 hours (default 24). |
+| `layout` | `tiles` (default) or `list`. |
+| `history_hours` | Length of the timelines and of the sheet chart, 1 to 72 hours (default 24). |
 | `show_timeline` | Show the timelines (default on). |
 | `show_eta` | Show the time to target (default on). |
 | `show_actions` | Show the quick action buttons (default on). |
