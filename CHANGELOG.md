@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-23
+
+| Category | Description |
+|----------|-------------|
+| Added    | New heating card for the whole house, fed by the SmartHeatZones overview |
+| Added    | The heating card shows the boiler with today's starts, runtime and afterheat |
+| Added    | The heating card shows why each zone is heating or idle |
+| Added    | The heating card draws a timeline of the heating periods for each zone and the boiler |
+| Added    | The heating card estimates the time to reach the target while a zone is heating |
+| Added    | The heating card shows the health of the sensor network |
+| Added    | The heating card has "All away" and "All eco" buttons |
+| Added    | The heating card flashes the zone row when SmartHeatZones reports a safety change |
+
+### Added
+
+- **Heating card.** `glowstat-heating-card` shows the whole heating system in one card, for SmartHeatZones 1.14.0 or newer. It needs only the overview sensor. It has a dashboard editor and Hungarian and English texts (closes #3).
+- **Boiler and zones.** The boiler is shown as running or off with the duration, who holds it, and today's counters. Each zone shows its temperature, a bar with the switch-on and switch-off limits, the reason for its state and the next scheduled change. A zone running on a backup sensor, in the emergency cycle or by afterheat gets a label; red is used only for a relay that does not respond, and for a failed boiler command.
+- **Timelines and time to target.** Shows when each zone and the boiler were heating over the last hours, and an estimate such as "~25 min to target" when the temperature clearly rises.
+- **Sensor network and quick actions.** One label per integration, for example "zha 2 of 5 silent", and buttons that set the preset of every zone at once. A failed zone is named.
+- **Live flash.** A zone row flashes for a few seconds when SmartHeatZones reports a safety change. This works for Home Assistant admin users only.
+
 ## [0.4.0] - 2026-11-20
 
 | Category | Description |

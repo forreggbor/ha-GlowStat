@@ -4,52 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { Script } from 'node:vm';
-import { JSDOM } from 'jsdom';
-
-const BUNDLE = new Script(readFileSync(new URL('../dist/ha-glowstat.js', import.meta.url), 'utf8'));
-const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
-/** Objects created inside the jsdom window have another prototype; compare their plain JSON form. */
-const same = (actual, expected) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);
-
-/** A fresh window with the bundle loaded. */
-function boot() {
-  const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
-  BUNDLE.runInContext(dom.getInternalVMContext());
-  return dom.window;
-}
-
-/** Mock hass; `calls` collects service calls, `api`/`ws` collect history requests. */
-function mkHass(states, extra = {}) {
-  const calls = [];
-  const api = [];
-  const ws = [];
-  const hass = {
-    states,
-    language: 'en',
-    locale: { language: 'en' },
-    config: { unit_system: { temperature: '°C' } },
-    callService: async (domain, service, data) => { calls.push([domain, service, data]); },
-    callApi: async (method, path) => { api.push(path); return extra.history ? extra.history() : [[]]; },
-    callWS: async (msg) => { ws.push(msg); return extra.stats ? extra.stats(msg) : {}; },
-  };
-  return { hass, calls, api, ws };
-}
-
-const tempState = (v, unit = '°C') => ({ state: String(v), attributes: { unit_of_measurement: unit, device_class: 'temperature', friendly_name: 'Living' } });
-const plain = (v) => ({ state: String(v), attributes: { friendly_name: 'x' } });
-
-function mount(win, tag, config, hass) {
-  const el = win.document.createElement(tag);
-  el.setConfig(config);
-  el.hass = hass;
-  win.document.body.appendChild(el);
-  return el;
-}
-
-const text = (el, sel) => (sel ? el.shadowRoot?.querySelector(sel) ?? el.querySelector(sel) : el)?.textContent.replace(/\s+/g, ' ').trim();
-const click = (win, el, sel) => el.shadowRoot.querySelector(sel).dispatchEvent(new win.MouseEvent('click', { bubbles: true, composed: true }));
+import { boot, click, mkHass, mount, plain, same, tempState, text, tick } from './helpers.mjs';
 
 const climateState = (over = {}) => ({
   state: 'heat',
@@ -59,11 +14,11 @@ const climateState = (over = {}) => ({
   },
 });
 
-test('both cards are registered', () => {
+test('all cards are registered', () => {
   const win = boot();
   assert.ok(win.customElements.get('glowstat-thermometer-card'));
   assert.ok(win.customElements.get('glowstat-climate-card'));
-  same(win.customCards.map((c) => c.type).sort(), ['glowstat-climate-card', 'glowstat-thermometer-card']);
+  same(win.customCards.map((c) => c.type).sort(), ['glowstat-climate-card', 'glowstat-heating-card', 'glowstat-thermometer-card']);
 });
 
 test('thermometer shows value, humidity, battery and the comfort word', () => {

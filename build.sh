@@ -11,7 +11,7 @@ mkdir -p dist
   echo "/* GlowStat v${version} - MIT - https://github.com/forreggbor/ha-GlowStat */"
   echo "(() => {"
   echo "const GS_VERSION = '${version}';"
-  cat src/common.js src/thermometer-card.js src/climate-card.js
+  cat src/common.js src/thermometer-card.js src/climate-card.js src/heating-card.js
   echo "console.info('%c GlowStat %c v' + GS_VERSION + ' ', 'background:#00a81c;color:#fff;border-radius:3px 0 0 3px', 'background:#333;color:#fff;border-radius:0 3px 3px 0');"
   echo "})();"
 } > dist/ha-glowstat.js

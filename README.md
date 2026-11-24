@@ -81,6 +81,35 @@ controls:
 Both cards can be used with the keyboard (Tab, Enter, Space), have labels for screen readers and switch to a compact
 layout on narrow screens.
 
+### `custom:glowstat-heating-card`
+
+The whole house in one card, for [SmartHeatZones](https://github.com/forreggbor/SmartHeatZones) 1.14.0 or newer. It reads only the
+overview entity `sensor.smartheatzones_overview`, so no zone has to be set up one by one:
+
+- **Boiler:** running or off with the duration, which zones hold it (zones that only joined by afterheat are marked),
+  and today's starts, runtime and afterheat joins. After a Home Assistant restart it says when the counting began.
+  A boiler command that failed is shown in red.
+- **Zones:** current and target temperature, a bar with the on and off thresholds, the reason for the zone's state
+  ("Idle - heats below 20.5°, target 21°", "Door or window open", ...), a chip when the zone runs on a backup
+  sensor, in the emergency cycle or by afterheat, and the next scheduled change. Red is used only for a relay that
+  does not respond.
+- **Timelines:** when each zone and the boiler were heating over the last hours (from the recorded history).
+- **Time to target:** `~25 min to target` for a heating zone, shown only when the temperature rises clearly; it is an
+  estimate from the last hour of the zone sensor.
+- **Sensor network:** one chip per integration, for example `zha 5/5 ok` or `zha: 2 of 5 silent`.
+- **Quick actions:** "All away" and "All eco" set the preset of every zone.
+- **Live flash:** a zone row flashes for a few seconds when SmartHeatZones reports a fail-safe change. This needs a
+  Home Assistant **admin** user (events can only be subscribed by admins); other users simply see no flash.
+
+| Option | Description |
+|--------|-------------|
+| `entity` | The overview sensor (`sensor.smartheatzones_overview`), required. |
+| `history_hours` | Length of the timelines, 1 to 72 hours (default 24). |
+| `show_timeline` | Show the timelines (default on). |
+| `show_eta` | Show the time to target (default on). |
+| `show_actions` | Show the quick action buttons (default on). |
+| `language` | `auto`, `hu` or `en`. |
+
 ## Installation
 
 1. In Home Assistant open **Settings > Marketplace**, add `forreggbor/ha-GlowStat` as a custom repository of type
