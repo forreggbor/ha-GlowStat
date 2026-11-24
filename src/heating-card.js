@@ -18,7 +18,7 @@ Object.assign(GS_I18N.en, {
   h_boiler_failed: 'Boiler command failed', h_chip_afterheat: 'afterheat',
   h_src_backup: 'backup sensor', h_src_limp: 'emergency cycle',
   h_next: 'Next: {temp}° at {at}', h_unavailable: 'Overview not available', h_schema_new: 'The SmartHeatZones data (schema {n}) is newer than this card: update GlowStat.',
-  h_other: 'other sensors',
+  h_sensors_ok: 'Sensors: {a} / {t} alive', h_backup_zones: '{n} on backup sensor', h_relay_faults: '{n} relay fault',
   show_timeline: 'Show timelines', show_eta: 'Show time to target', show_actions: 'Show quick actions',
   r_needs_heat: 'Cold – needs heat', r_holding: 'Heating until {off_above}°',
   r_afterheat: 'Riding along on the running boiler', r_in_band: 'Idle – heats below {on_below}°, target {target}°',
@@ -27,7 +27,7 @@ Object.assign(GS_I18N.en, {
   r_limp_heating: 'Emergency cycle – heating now', r_limp_waiting: 'Emergency cycle – next heating in {next_in_min} min',
   r_limp_waiting_none: 'Emergency cycle – waiting',
   h_eta: '~{n} min to target', h_timeline: 'heating periods',
-  h_all_away: 'All away', h_all_eco: 'All eco', h_group_ok: '{p} {t}/{t} ok', h_group_bad: '{p}: {b} of {t} silent',
+  h_all_away: 'All away', h_all_eco: 'All eco',
   h_set_failed: 'Could not change the climate setting',
   layout: 'Layout', layout_tiles: 'Tiles with ring gauges', layout_list: 'List with expandable rows',
   h_all_auto: 'All automatic', h_target: 'target {t}°', h_now: 'now', h_close: 'Close',
@@ -45,7 +45,7 @@ Object.assign(GS_I18N.hu, {
   h_boiler_failed: 'A kazánparancs nem sikerült', h_chip_afterheat: 'utánfűtés',
   h_src_backup: 'tartalék érzékelő', h_src_limp: 'vészüzem',
   h_next: 'Következő: {temp}° ekkor: {at}', h_unavailable: 'Az áttekintés nem elérhető', h_schema_new: 'A SmartHeatZones adat (séma: {n}) újabb, mint a kártya: frissítsd a GlowStatot.',
-  h_other: 'egyéb érzékelők',
+  h_sensors_ok: 'Érzékelők: {a} / {t} él', h_backup_zones: '{n} tartalék érzékelőn', h_relay_faults: '{n} relé hiba',
   show_timeline: 'Idővonalak megjelenítése', show_eta: 'Cél eléréséig hátralévő idő', show_actions: 'Gyorsműveletek megjelenítése',
   r_needs_heat: 'Hideg – fűtésre szorul', r_holding: 'Fűt {off_above}°-ig',
   r_afterheat: 'Rátapad a már működő kazánra', r_in_band: 'Pihen – {on_below}° alatt fűt, cél {target}°',
@@ -54,7 +54,7 @@ Object.assign(GS_I18N.hu, {
   r_limp_heating: 'Vészüzem – most fűt', r_limp_waiting: 'Vészüzem – következő fűtés {next_in_min} perc múlva',
   r_limp_waiting_none: 'Vészüzem – várakozik',
   h_eta: '~{n} perc a célig', h_timeline: 'fűtési időszakok',
-  h_all_away: 'Mind távol', h_all_eco: 'Mind eco', h_group_ok: '{p} {t}/{t} rendben', h_group_bad: '{p}: {b}/{t} néma',
+  h_all_away: 'Mind távol', h_all_eco: 'Mind eco',
   h_set_failed: 'A beállítás módosítása nem sikerült',
   layout: 'Elrendezés', layout_tiles: 'Csempék gyűrűs hőmérővel', layout_list: 'Lista kinyitható sorokkal',
   h_all_auto: 'Mind automata', h_target: 'cél {t}°', h_now: 'most', h_close: 'Bezár',
@@ -240,7 +240,7 @@ function gsHeatChart(L, data, from, to) {
 }
 
 const GS_HEAT_CSS = `
-  :host { display: block; --h-heat: 255,112,67; --h-idle: 66,165,245; --h-warn: 255,174,0; --h-bad: 239,83,80; --h-off: 140,150,165; }
+  :host { display: block; --h-heat: 255,112,67; --h-idle: 66,165,245; --h-warn: 255,174,0; --h-bad: 239,83,80; --h-off: 140,150,165; --h-ok: 67,160,71; }
   ha-card { display: block; overflow: hidden; }
   .wrap { padding: 12px; display: grid; gap: 10px; }
   button { font: inherit; color: inherit; }
@@ -284,6 +284,7 @@ const GS_HEAT_CSS = `
   .badge.idle { background: rgba(var(--h-idle), 0.16); color: rgb(var(--h-idle)); }
   .badge.warn { background: rgba(var(--h-warn), 0.2); color: rgb(var(--h-warn)); }
   .badge.bad { background: rgba(var(--h-bad), 0.16); color: rgb(var(--h-bad)); }
+  .badge.ok { background: rgba(var(--h-ok), 0.16); color: rgb(var(--h-ok)); }
   .badge.off { background: rgba(var(--h-off), 0.2); color: var(--secondary-text-color); }
   .chip { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
   .zone.warn .chip { background: rgba(var(--h-warn), 0.25); }
@@ -309,8 +310,6 @@ const GS_HEAT_CSS = `
   .eta { font-size: 12.5px; font-weight: 500; }
   .next { font-size: 12.5px; color: var(--secondary-text-color); }
   .health { display: flex; flex-wrap: wrap; gap: 6px; }
-  .hgroup { font-size: 12px; padding: 2px 10px; border-radius: 10px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); }
-  .hgroup.bad { border-color: rgba(var(--h-warn), 0.8); color: var(--primary-text-color); background: rgba(var(--h-warn), 0.15); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .act, .pbtn { flex: 1; min-width: 90px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 14px; cursor: pointer; user-select: none; font-size: 13px; border: 1px solid var(--divider-color); background: var(--secondary-background-color); }
   .act:active, .pbtn:active { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
@@ -630,19 +629,22 @@ class GlowStatHeatingCard extends HTMLElement {
       <div class="actions"><button class="act" data-more="${gsEsc(z.entity_id)}">${gsEsc(gsT(L, 'h_details'))}</button></div></div></div>`;
   }
 
-  /** One chip per sensor group: "zha 5/5 ok" or "zha: 2 of 5 silent" (amber). */
-  _healthHtml(groups, L) {
-    const keys = Object.keys(groups || {}).sort();
-    if (!keys.length) return '';
-    const chips = keys.map((key) => {
-      const g = groups[key] || {};
-      const platform = key === 'unregistered' ? gsT(L, 'h_other') : key.split('/')[0];
-      const bad = Number(g.bad) > 0;
-      const label = gsT(L, bad ? 'h_group_bad' : 'h_group_ok')
-        .replace(/\{p\}/g, platform).replace(/\{t\}/g, String(g.total)).replace(/\{b\}/g, String(g.bad));
-      return `<span class="hgroup${bad ? ' bad' : ''}">${gsEsc(label)}</span>`;
-    });
-    return `<div class="health">${chips.join('')}</div>`;
+  /** Summary badges: sensors alive (green, amber if some are silent), zones on a backup sensor, relay faults. */
+  _healthHtml(groups, zones, L) {
+    const gs = Object.values(groups || {});
+    const badges = [];
+    const total = gs.reduce((n, g) => n + (Number(g && g.total) || 0), 0);
+    if (total > 0) {
+      const bad = gs.reduce((n, g) => n + (Number(g && g.bad) || 0), 0);
+      const label = gsT(L, 'h_sensors_ok').replace(/\{a\}/g, String(total - bad)).replace(/\{t\}/g, String(total));
+      badges.push(`<span class="badge ${bad > 0 ? 'warn' : 'ok'}">${gsEsc(label)}</span>`);
+    }
+    const zs = zones || [];
+    const backup = zs.filter((z) => z.sensor_source === 'backup').length;
+    if (backup > 0) badges.push(`<span class="badge warn">${gsEsc(gsT(L, 'h_backup_zones').replace(/\{n\}/g, String(backup)))}</span>`);
+    const faults = zs.filter((z) => Array.isArray(z.relay_fault) && z.relay_fault.length).length;
+    if (faults > 0) badges.push(`<span class="badge bad">${gsEsc(gsT(L, 'h_relay_faults').replace(/\{n\}/g, String(faults)))}</span>`);
+    return badges.length ? `<div class="health">${badges.join('')}</div>` : '';
   }
 
   /** Quick actions for all zones. */
@@ -717,7 +719,7 @@ class GlowStatHeatingCard extends HTMLElement {
       ? `<div class="hint">${gsEsc(gsT(L, 'h_schema_new').replace('{n}', String(a.schema)))}</div>` : '';
     const layout = cfg.layout === 'list' ? 'list' : 'tiles';
     const open = this._open && a.zones.find((z) => z.entity_id === this._open);
-    shell(`<div class="wrap">${hint}${this._boilerHtml(a.boiler, L)}${this._healthHtml(a.health && a.health.groups, L)}${this._actionsHtml(L)}<div class="zones ${layout}">${a.zones.map((z) => this._zoneHtml(z, L, unit)).join('')}</div></div>${open ? this._sheetHtml(open, L, unit) : ''}`);
+    shell(`<div class="wrap">${hint}${this._boilerHtml(a.boiler, L)}${this._healthHtml(a.health && a.health.groups, a.zones, L)}${this._actionsHtml(L)}<div class="zones ${layout}">${a.zones.map((z) => this._zoneHtml(z, L, unit)).join('')}</div></div>${open ? this._sheetHtml(open, L, unit) : ''}`);
   }
 
   _openSheet(entity) {

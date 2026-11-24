@@ -296,19 +296,22 @@ test('a failing history request is logged once and the card still renders', asyn
 
 const twoZones = () => overview({ zones: [zone(), zone({ name: 'Bedroom', entity_id: 'climate.bedroom' })] });
 
-test('health line: all fine and partly silent, with the key split at the first slash', () => {
-  const ok = setup(overview({ health: { groups: { 'zha/abc123': { total: 5, bad: 0 } } } }));
-  assert.equal(text(ok.el, '.hgroup'), 'zha 5/5 ok');
-  assert.ok(!ok.el.shadowRoot.querySelector('.hgroup.bad'));
-  const bad = setup(overview({ health: { groups: { 'zha/abc123': { total: 5, bad: 2 } } } }));
-  assert.equal(text(bad.el, '.hgroup'), 'zha: 2 of 5 silent');
-  assert.ok(bad.el.shadowRoot.querySelector('.hgroup.bad'));
+test('health badges: sensors alive sum over all groups, green when all fine and amber when some are silent', () => {
+  const ok = setup(overview({ health: { groups: { 'zha/abc123': { total: 5, bad: 0 }, 'mqtt/a/b': { total: 1, bad: 0 } } } }));
+  assert.equal(text(ok.el, '.health .badge'), 'Sensors: 6 / 6 alive');
+  assert.ok(ok.el.shadowRoot.querySelector('.health .badge.ok'));
+  const bad = setup(overview({ health: { groups: { 'zha/abc123': { total: 5, bad: 1 }, unregistered: { total: 1, bad: 0 } } } }));
+  assert.equal(text(bad.el, '.health .badge'), 'Sensors: 5 / 6 alive');
+  assert.ok(bad.el.shadowRoot.querySelector('.health .badge.warn'));
 });
 
-test('health line: a key with several slashes keeps only the platform, "unregistered" reads as other sensors', () => {
-  const { el } = setup(overview({ health: { groups: { 'mqtt/a/b': { total: 1, bad: 0 }, unregistered: { total: 2, bad: 0 } } } }));
-  const texts = [...el.shadowRoot.querySelectorAll('.hgroup')].map((n) => n.textContent.trim());
-  assert.deepEqual(texts.sort(), ['mqtt 1/1 ok', 'other sensors 2/2 ok']);
+test('health badges: zones on a backup sensor and relay faults get their own badges', () => {
+  const { el } = setup(overview({
+    zones: [zone({ sensor_source: 'backup' }), zone({ name: 'B', entity_id: 'climate.b', relay_fault: ['switch.x'] })],
+    health: { groups: { 'zha/a': { total: 2, bad: 0 } } },
+  }));
+  const texts = [...el.shadowRoot.querySelectorAll('.health .badge')].map((n) => n.textContent.trim());
+  assert.deepEqual(texts, ['Sensors: 2 / 2 alive', '1 on backup sensor', '1 relay fault']);
 });
 
 test('no groups means no health line', () => {

@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-11-24
+
+| Category | Description |
+|----------|-------------|
+| Changed  | The heating card shows its health summary as colored badges instead of a plain text chip |
+
+### Changed
+
+- **Health badges.** The line under the boiler now shows "Sensors: 5 / 6 alive" (green, amber when some are silent), "1 on backup sensor" (amber) and "1 relay fault" (red) instead of a single "mqtt 3/3 ok" chip. Badges for backup sensors and relay faults only appear when there is something to report (closes #5).
+
 ## [0.6.0] - 2026-11-24
 
 | Category | Description |
